@@ -171,6 +171,8 @@ type Command struct {
 	lflags *flag.FlagSet
 	// iflags contains inherited flags.
 	iflags *flag.FlagSet
+	// rflags contains required flags.
+	rflags *flag.FlagSet
 	// parentsPflags is all persistent flags of cmd's parents.
 	parentsPflags *flag.FlagSet
 	// globNormFunc is the global normalization function
@@ -1365,6 +1367,48 @@ func (c *Command) NonInheritedFlags() *flag.FlagSet {
 	return c.LocalFlags()
 }
 
+// RequiredFlags returns all flags which have the 'required' annotation set
+func (c *Command) RequiredFlags() *flag.FlagSet {
+	if c.rflags == nil {
+		c.rflags = flag.NewFlagSet(c.Name(), flag.ContinueOnError)
+		if c.flagErrorBuf == nil {
+			c.flagErrorBuf = new(bytes.Buffer)
+		}
+		c.rflags.SetOutput(c.flagErrorBuf)
+	}
+	c.rflags.SortFlags = c.Flags().SortFlags
+	if c.globNormFunc != nil {
+		c.rflags.SetNormalizeFunc(c.globNormFunc)
+	}
+
+	addToRequired := func(f *flag.Flag) {
+		if c.rflags.Lookup(f.Name) == nil {
+			if _, ok := f.Annotations[BashCompOneRequiredFlag]; ok {
+				c.rflags.AddFlag(f)
+			}
+		}
+	}
+	c.Flags().VisitAll(addToRequired)
+	c.PersistentFlags().VisitAll(addToRequired)
+	return c.rflags
+}
+
+// NonRequiredFlags returns all flags which do not have the 'required' annotation set
+func (c *Command) NonRequiredFlags() *flag.FlagSet {
+	requiredFlags := c.RequiredFlags()
+
+	out := flag.NewFlagSet(c.Name(), flag.ContinueOnError)
+	addToNonRequired := func(f *flag.Flag) {
+		if requiredFlags.Lookup(f.Name) == nil {
+			out.AddFlag(f)
+		}
+	}
+
+	c.Flags().VisitAll(addToNonRequired)
+	c.PersistentFlags().VisitAll(addToNonRequired)
+	return out
+}
+
 // PersistentFlags returns the persistent FlagSet specifically set in the current command.
 func (c *Command) PersistentFlags() *flag.FlagSet {
 	if c.pflags == nil {
@@ -1388,12 +1432,17 @@ func (c *Command) ResetFlags() {
 
 	c.lflags = nil
 	c.iflags = nil
+	c.rflags = nil
 	c.parentsPflags = nil
 }
 
 // HasFlags checks if the command contains any flags (local plus persistent from the entire structure).
 func (c *Command) HasFlags() bool {
 	return c.Flags().HasFlags()
+}
+
+func (c *Command) HasRequiredFlags() bool {
+	return c.RequiredFlags().HasFlags()
 }
 
 // HasPersistentFlags checks if the command contains persistent flags.
