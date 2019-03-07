@@ -1369,6 +1369,8 @@ func (c *Command) NonInheritedFlags() *flag.FlagSet {
 
 // RequiredFlags returns all flags which have the 'required' annotation set
 func (c *Command) RequiredFlags() *flag.FlagSet {
+	c.mergePersistentFlags()
+	
 	if c.rflags == nil {
 		c.rflags = flag.NewFlagSet(c.Name(), flag.ContinueOnError)
 		if c.flagErrorBuf == nil {
@@ -1383,7 +1385,7 @@ func (c *Command) RequiredFlags() *flag.FlagSet {
 
 	addToRequired := func(f *flag.Flag) {
 		if c.rflags.Lookup(f.Name) == nil {
-			if _, ok := f.Annotations[BashCompOneRequiredFlag]; ok {
+			if val, ok := f.Annotations[BashCompOneRequiredFlag]; ok && val[0] == "true" {
 				c.rflags.AddFlag(f)
 			}
 		}
